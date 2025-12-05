@@ -9,7 +9,6 @@ on:
 jobs:
   test-api:
     runs-on: ubuntu-latest
-
     services:
       postgres:
         image: postgis/postgis:17-3.5-alpine
