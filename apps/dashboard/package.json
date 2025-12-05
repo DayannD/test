@@ -29,7 +29,7 @@
     "@angular/core": "^20.1.0",
     "@angular/forms": "^20.1.0",
     "@angular/platform-browser": "^20.1.0",
-    "@angular/platform-server": "^20.1.0",
+    "@angular/platform-server": "^21.0.3",
     "@angular/router": "^20.1.0",
     "@angular/ssr": "^20.1.1",
     "express": "^5.1.0",
