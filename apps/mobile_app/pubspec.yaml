@@ -43,7 +43,7 @@ dependencies:
   get_it: ^7.6.4
   
   # Variables d'environnement et configuration
-  flutter_dotenv: ^5.1.0
+  flutter_dotenv: ^6.0.0
   
   # Sérialisation JSON
   json_annotation: ^4.8.1
