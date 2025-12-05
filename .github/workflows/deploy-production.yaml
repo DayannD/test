@@ -80,7 +80,7 @@ jobs:
           scp -i ~/.ssh/deploy_key -r docker/nginx ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/beesure/docker/
 
       - name: Deploy to production server
-        uses: appleboy/ssh-action@v1.2.2
+        uses: appleboy/ssh-action@v1.2.4
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
