@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="001-enable-postgis" author="beesure">
+        <comment>Activer l'extension PostGIS pour la géolocalisation</comment>
+        <sql>
+            CREATE EXTENSION IF NOT EXISTS postgis;
+            CREATE EXTENSION IF NOT EXISTS postgis_topology;
+        </sql>
+        <rollback>
+            DROP EXTENSION IF EXISTS postgis_topology;
+            DROP EXTENSION IF EXISTS postgis;
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -1,0 +1,6 @@
+FROM liquibase/liquibase:4.33-alpine
+
+COPY docker/liquibase/changelog.xml /liquibase/
+COPY docker/liquibase/changesets/ /liquibase/changesets/
+
+CMD ["update"]

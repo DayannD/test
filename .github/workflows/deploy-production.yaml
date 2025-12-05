@@ -1,0 +1,167 @@
+name: Deploy to Production
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy (e.g., 1.0.0)'
+        required: true
+        type: string
+      skip_confirmation:
+        description: 'Skip manual approval (use with caution)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.validate.outputs.version }}
+
+    steps:
+      - name: Validate version
+        id: validate
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+
+          # Reject pre-releases in auto deployment
+          if [ "${{ github.event_name }}" = "push" ] && [[ "$VERSION" == *"-"* ]]; then
+            echo "Pre-release versions cannot be auto-deployed to production"
+            echo "Version: $VERSION"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version validated: $VERSION"
+
+  approval:
+    runs-on: ubuntu-latest
+    needs: prepare
+    environment: production-approval
+    if: ${{ github.event_name == 'push' || inputs.skip_confirmation != true }}
+
+    steps:
+      - name: Manual approval checkpoint
+        run: |
+          echo "⏳ Waiting for manual approval to deploy v${{ needs.prepare.outputs.version }} to production..."
+          echo "This is a checkpoint to ensure production deployments are reviewed."
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [prepare, approval]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.approval.result == 'success' || needs.approval.result == 'skipped') }}
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Convert repository name to lowercase
+        id: repo
+        run: echo "repo_lower=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Copy files to server
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+          # Copy docker-compose and nginx config
+          scp -i ~/.ssh/deploy_key docker-compose.prod.yml ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/beesure/
+          scp -i ~/.ssh/deploy_key -r docker/nginx ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/beesure/docker/
+
+      - name: Deploy to production server
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -e
+            cd ~/beesure
+
+            echo "Creating .env file..."
+            cat > .env << 'EOF'
+            GITHUB_REPOSITORY=${{ steps.repo.outputs.repo_lower }}
+            IMAGE_TAG=${{ needs.prepare.outputs.version }}
+            NODE_ENV=production
+            PORT=3000
+            API_PREFIX=api/v1
+
+            # Database PostgreSQL
+            DATABASE_NAME=${{ secrets.DATABASE_NAME }}
+            DATABASE_USERNAME=${{ secrets.DATABASE_USERNAME }}
+            DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD }}
+            DATABASE_SYNC=false
+            DATABASE_LOGGING=false
+
+            # Database MongoDB
+            MONGO_ROOT_USER=${{ secrets.MONGO_ROOT_USER }}
+            MONGO_ROOT_PASSWORD=${{ secrets.MONGO_ROOT_PASSWORD }}
+            MONGO_DB_NAME=${{ secrets.MONGO_DB_NAME }}
+
+            # JWT & Auth
+            JWT_ACCESS_SECRET=${{ secrets.JWT_ACCESS_SECRET }}
+            JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
+            JWT_ACCESS_EXPIRES_IN=15m
+            JWT_REFRESH_EXPIRES_IN=7d
+
+            # Security
+            BCRYPT_ROUNDS=12
+
+            # Rate Limiting
+            THROTTLE_TTL=${{ secrets.THROTTLE_TTL }}
+            THROTTLE_LIMIT=${{ secrets.THROTTLE_LIMIT }}
+            AUTH_THROTTLE_TTL=${{ secrets.AUTH_THROTTLE_TTL }}
+            AUTH_THROTTLE_LIMIT=${{ secrets.AUTH_THROTTLE_LIMIT }}
+
+            # CORS
+            CORS_ORIGIN=${{ secrets.CORS_ORIGIN }}
+            EOF
+
+            chmod 600 .env
+
+            echo "Checking SSL certificates..."
+            if [ ! -f docker/nginx/ssl/cert.pem ] || [ ! -f docker/nginx/ssl/key.pem ]; then
+              echo "⚠️  WARNING: SSL certificates not found!"
+              echo "For production, you should use Let's Encrypt certificates."
+              echo "Generating temporary self-signed certificates for now..."
+              cd docker/nginx
+              chmod +x generate-ssl-cert.sh
+              ./generate-ssl-cert.sh
+              cd ~/beesure
+              echo "⚠️  Remember to replace with proper Let's Encrypt certificates!"
+            else
+              echo "SSL certificates found"
+            fi
+
+            echo "Logging into GitHub Container Registry..."
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            echo "Pulling images..."
+            docker compose -f docker-compose.prod.yml pull
+
+            echo "Restarting services..."
+            docker compose -f docker-compose.prod.yml down
+            docker compose -f docker-compose.prod.yml up -d
+
+            echo "Cleaning old images..."
+            docker image prune -af --filter "until=720h"
+
+            echo "Production deployment successful!"
+
+      - name: Deployment summary
+        run: |
+          echo "### Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** ${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment:** Production" >> $GITHUB_STEP_SUMMARY

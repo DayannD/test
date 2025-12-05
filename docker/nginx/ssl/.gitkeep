@@ -1,0 +1,3 @@
+# SSL certificates will be stored here
+# - For development: self-signed certificates
+# - For production: Let's Encrypt certificates

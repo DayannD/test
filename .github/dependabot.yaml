@@ -1,0 +1,44 @@
+# .github/dependabot.yml
+version: 2
+
+updates:
+- package-ecosystem: "github-actions"
+  directory: "/"
+  schedule:
+    interval: "weekly"
+      
+  # --- Backend NestJS (npm) ---
+- package-ecosystem: "npm"
+  directory: "/apps/api"
+  schedule:
+      interval: "weekly"  
+  labels:
+    - "dependencies"
+    - "API - backend"
+  commit-message:
+      prefix: "deps(nest API)"
+      include: "scope"
+
+  # --- Frontend Angular (npm) ---
+- package-ecosystem: "npm" 
+  directory: "/apps/dashboard" 
+  schedule:
+    interval: "weekly"
+  labels:
+      - "dependencies"
+      - "dashboard"
+  commit-message:
+      prefix: "deps(angular - dashboard )"
+      include: "scope"
+
+  # --- Application Flutter (pub) ---
+- package-ecosystem: "pub"
+  directory: "/apps/mobile_app"
+  schedule:
+      interval: "weekly"
+  labels:
+      - "dependencies"
+      - "mobile"
+  commit-message:
+      prefix: "deps(flutter)"
+      include: "scope"

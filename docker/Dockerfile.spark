@@ -1,0 +1,11 @@
+FROM apache/spark:4.0.0-java21-python3
+
+WORKDIR /data
+
+COPY ./spark/requirements.txt /data/
+COPY ./spark/predict_incident_by_week.py /data/
+
+# Installer les dépendances Python
+USER root
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt

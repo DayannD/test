@@ -1,0 +1,156 @@
+name: CI
+
+on:
+  push:
+    branches: [prod, dev]
+  pull_request:
+    branches: [prod, dev]
+
+jobs:
+  test-api:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgis/postgis:17-3.5-alpine
+        env:
+          POSTGRES_DB: beesure_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+          POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+        options: >-
+          --health-cmd "pg_isready -U test_user"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      mongodb:
+        image: mongo:8.0.3
+        env:
+          MONGO_INITDB_ROOT_USERNAME: test_user
+          MONGO_INITDB_ROOT_PASSWORD: test_password
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 27017:27017
+
+    defaults:
+      run:
+        working-directory: apps/api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: apps/api/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: beesure_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          MONGO_HOST: localhost
+          MONGO_PORT: 27017
+          MONGO_DB_NAME: beesure_test
+          MONGO_ROOT_USER: test_user
+          MONGO_ROOT_PASSWORD: test_password
+          JWT_SECRET: test-secret-key-for-ci
+          JWT_EXPIRATION: 3600
+
+      - name: E2E tests
+        run: npm run test:e2e
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: beesure_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          MONGO_HOST: localhost
+          MONGO_PORT: 27017
+          MONGO_DB_NAME: beesure_test
+          MONGO_ROOT_USER: test_user
+          MONGO_ROOT_PASSWORD: test_password
+          JWT_SECRET: test-secret-key-for-ci
+          JWT_EXPIRATION: 3600
+
+  test-flutter:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: apps/mobile_app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.7'
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+#      - name: Analyze
+#        run: flutter analyze --fatal-infos
+
+#      - name: Test
+#        run: flutter test --coverage
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: apps/mobile_app/coverage/lcov.info
+          flags: flutter
+          fail_ci_if_error: false
+
+  build-docker:
+    runs-on: ubuntu-latest
+    needs: [test-api, test-flutter]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build API image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.api.prod
+          push: false
+          tags: beesure-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Liquibase image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.liquibase
+          push: false
+          tags: beesure-liquibase:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
