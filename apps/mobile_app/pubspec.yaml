@@ -40,7 +40,7 @@ dependencies:
   
   # Gestion d'état et injection de dépendances
   provider: ^6.1.1
-  get_it: ^7.6.4
+  get_it: ^9.2.0
   
   # Variables d'environnement et configuration
   flutter_dotenv: ^5.1.0
