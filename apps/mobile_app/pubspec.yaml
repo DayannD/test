@@ -52,7 +52,7 @@ dependencies:
   logger: ^2.0.2+1
 
   #Stackage Token
-  flutter_secure_storage: ^8.0.0
+  flutter_secure_storage: ^9.2.4
 
 
 dev_dependencies:
