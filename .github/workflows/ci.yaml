@@ -60,6 +60,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
       - name: Unit tests
         run: npm test
         env:
